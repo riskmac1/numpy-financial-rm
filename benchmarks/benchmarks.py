@@ -53,3 +53,54 @@ class Npv2D:
             for cashflow in self.cashflows_decimal:
                 npf.npv(rate, cashflow)
 
+
+class Fv2D:
+    param_names = ["n_rates", "n_periods", "n_pmts", "n_pv"]
+    params = [
+        (1, 10, 100),
+        (1, 10, 100),
+        (1, 10, 100),
+        (1, 10, 100),
+    ]
+
+    def __init__(self):
+        self.present_value = None
+        self.payments = None
+        self.periods = None
+        self.rates = None
+
+    def setup(self, n_rates, n_periods, n_pmts, n_pv):
+        rng = np.random.default_rng(42)
+        self.rates = rng.standard_normal(n_rates)
+        self.periods = rng.standard_normal(n_periods)
+        self.payments = rng.standard_normal(n_pmts)
+        self.present_value = rng.standard_normal(n_pv)
+        self.rates_decimal = _to_decimal_array_1d(self.rates)
+        self.periods_decimal = _to_decimal_array_1d(self.periods)
+        self.payments_decimal = _to_decimal_array_1d(self.payments)
+        self.present_value_decimal = _to_decimal_array_1d(self.present_value)
+
+    def time_broadcast(self, n_rates, n_periods, n_pmts, n_pv):
+        npf.fv(self.rates, self.periods, self.payments, self.present_value)
+
+    def time_broadcast_decimal(self, n_rates, n_periods, n_pmts, n_pv):
+        npf.fv(
+            self.rates_decimal,
+            self.periods_decimal,
+            self.payments_decimal,
+            self.present_value_decimal
+        )
+
+    def time_naive_for_loop(self, n_rates, n_periods, n_pmts, n_pv):
+        for rate in self.rates:
+            for period in self.periods:
+                for payment in self.payments:
+                    for present_value in self.present_value:
+                        npf.fv(rate, period, payment, present_value)
+
+    def time_naive_for_loop_decimal(self, n_rates, n_periods, n_pmts, n_pv):
+        for rate in self.rates_decimal:
+            for period in self.periods_decimal:
+                for payment in self.payments_decimal:
+                    for present_value in self.present_value_decimal:
+                        npf.fv(rate, period, payment, present_value)
