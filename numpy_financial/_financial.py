@@ -77,6 +77,64 @@ def _get_output_array_shape(*arrays):
     return tuple(array.shape[0] for array in arrays)
 
 
+def _fv_inner_loop_native(rate, nper, pmt, pv, when):
+    if rate == 0.0:
+        fv_ = -(pv + pmt * nper)
+    else:
+        temp = (1.0 + rate) ** nper
+        fv_ = (
+                - pv * temp
+                - pmt * (1.0 + rate * when) / rate
+                * (temp - 1.0)
+        )
+    return fv_.item()
+
+
+def _fv_native(rates, npers, pmts, pvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(npers.shape[0]):
+            for k in range(pmts.shape[0]):
+                for l in range(pvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l, m] = _fv_inner_loop_native(
+                            rates[i],
+                            npers[j],
+                            pmts[k],
+                            pvs[l],
+                            whens[m]
+                        )
+
+
+def _fv_inner_loop_decimal(rate, nper, pmt, pv, when):
+    zero = Decimal("0.0")
+    one = Decimal("1.0")
+    if rate == zero:
+        fv_ = -(pv + pmt * nper)
+    else:
+        temp = (one + rate) ** nper
+        fv_ = (
+                - pv * temp
+                - pmt * (one + rate * when) / rate
+                * (temp - one)
+        )
+    return fv_
+
+
+def _fv_decimal(rates, npers, pmts, pvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(npers.shape[0]):
+            for k in range(pmts.shape[0]):
+                for l in range(pvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l, m] = _fv_inner_loop_decimal(
+                            rates[i],
+                            npers[j],
+                            pmts[k],
+                            pvs[l],
+                            whens[m]
+                        )
+
+
 def fv(rate, nper, pmt, pv, when='end'):
     """Compute the future value.
 
@@ -161,27 +219,23 @@ def fv(rate, nper, pmt, pv, when='end'):
 
     """
     when = _convert_when(when)
-    rate, nper, pmt, pv, when = np.broadcast_arrays(rate, nper, pmt, pv, when)
+    rates, npers, pmts, pvs, whens = map(np.atleast_1d, (rate, nper, pmt, pv, when))
 
-    fv_array = np.empty_like(rate)
-    zero = rate == 0
-    nonzero = ~zero
+    arrays = rates, npers, pmts, pvs, whens
+    dtype = Decimal if _use_decimal_dtype(*arrays) else np.float64
+    shape = _get_output_array_shape(*arrays)
 
-    fv_array[zero] = -(pv[zero] + pmt[zero] * nper[zero])
+    if dtype == Decimal:
+        rates, npers, pmts, pvs, whens = map(_to_decimal_array_1d, arrays)
 
-    rate_nonzero = rate[nonzero]
-    temp = (1 + rate_nonzero) ** nper[nonzero]
-    fv_array[nonzero] = (
-            - pv[nonzero] * temp
-            - pmt[nonzero] * (1 + rate_nonzero * when[nonzero]) / rate_nonzero
-            * (temp - 1)
-    )
+    out = np.empty(shape=shape, dtype=dtype)
 
-    if np.ndim(fv_array) == 0:
-        # Follow the ufunc convention of returning scalars for scalar
-        # and 0d array inputs.
-        return fv_array.item(0)
-    return fv_array
+    if dtype == Decimal:
+        _fv_decimal(rates, npers, pmts, pvs, whens, out)
+    else:
+        _fv_native(rates, npers, pmts, pvs, whens, out)
+
+    return _return_ufunc_like(out)
 
 
 def pmt(rate, nper, pv, fv=0, when='end'):

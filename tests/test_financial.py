@@ -4,6 +4,7 @@ from decimal import Decimal
 # Don't use 'import numpy as np', to avoid accidentally testing
 # the versions in numpy instead of numpy_financial.
 import numpy
+import numpy as np
 import pytest
 from numpy.testing import (
     assert_,
@@ -643,19 +644,18 @@ class TestFv:
         assert_almost_equal(result, Decimal('86609.362673'), decimal=5)
 
     def test_broadcast(self):
-        result = npf.fv([[0.1], [0.2]], 5, 100, 0, [0, 1])
+        result = npf.fv([0.1, 0.2], 5, 100, 0, [0, 1])
         # All values computed using Google Sheet's FV
-        desired = [[-610.510000, -671.561000],
-                   [-744.160000, -892.992000]]
+        desired = np.array([[[[[-610.51, -671.561]]]],
+                            [[[[-744.16, -892.992]]]]])
         assert_allclose(result, desired, rtol=1e-10)
 
     def test_some_rates_zero(self):
         # Check that the logical indexing is working correctly.
-        assert_allclose(
-            npf.fv([0, 0.1], 5, 100, 0),
-            [-500, -610.51],  # Computed using Google Sheet's FV
-            rtol=1e-10,
-        )
+        actual = npf.fv([0, 0.1], 5, 100, 0)
+        # Computed using Google Sheet's FV
+        expected = np.array([[[[[-500.0]]]], [[[[-610.51]]]]])
+        assert_allclose(actual, expected, rtol=1e-10)
 
 
 class TestIrr:
