@@ -77,6 +77,7 @@ def _get_output_array_shape(*arrays):
     return tuple(array.shape[0] for array in arrays)
 
 
+@nb.njit
 def _fv_inner_loop_native(rate, nper, pmt, pv, when):
     if rate == 0.0:
         fv_ = -(pv + pmt * nper)
@@ -90,12 +91,13 @@ def _fv_inner_loop_native(rate, nper, pmt, pv, when):
     return fv_.item()
 
 
+@nb.njit(parallel=True)
 def _fv_native(rates, npers, pmts, pvs, whens, out):
-    for i in range(rates.shape[0]):
-        for j in range(npers.shape[0]):
-            for k in range(pmts.shape[0]):
-                for l in range(pvs.shape[0]):
-                    for m in range(whens.shape[0]):
+    for i in nb.prange(rates.shape[0]):
+        for j in nb.prange(npers.shape[0]):
+            for k in nb.prange(pmts.shape[0]):
+                for l in nb.prange(pvs.shape[0]):
+                    for m in nb.prange(whens.shape[0]):
                         out[i, j, k, l, m] = _fv_inner_loop_native(
                             rates[i],
                             npers[j],
@@ -105,6 +107,8 @@ def _fv_native(rates, npers, pmts, pvs, whens, out):
                         )
 
 
+# Require ``forceobj=True`` to support decimal.Decimal types
+@nb.jit(forceobj=True)
 def _fv_inner_loop_decimal(rate, nper, pmt, pv, when):
     zero = Decimal("0.0")
     one = Decimal("1.0")
@@ -120,6 +124,8 @@ def _fv_inner_loop_decimal(rate, nper, pmt, pv, when):
     return fv_
 
 
+# Require ``forceobj=True`` to support decimal.Decimal types
+@nb.jit(forceobj=True)
 def _fv_decimal(rates, npers, pmts, pvs, whens, out):
     for i in range(rates.shape[0]):
         for j in range(npers.shape[0]):
