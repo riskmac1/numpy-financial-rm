@@ -235,9 +235,12 @@ class TestPmt:
     def test_pmt_broadcast(self):
         # Test the case where we use broadcast and
         # the arguments passed in are arrays.
-        res = npf.pmt([[0.0, 0.8], [0.3, 0.8]], [12, 3], [2000, 20000])
-        tgt = numpy.array([[-166.66667, -19311.258], [-626.90814, -19311.258]])
-        assert_allclose(res, tgt)
+        res = npf.pmt([0.0, 0.8], [12, 3], [2000, 20000])
+        tgt = numpy.array([[[-166.66666667, -1666.66666667],
+                            [-666.66666667, -6666.66666667]],
+                           [[-1601.38428496, -16013.84284962],
+                            [-1931.12582781, -19311.25827815]]])
+        assert_allclose(res.squeeze(), tgt)
 
     def test_pmt_decimal_simple(self):
         res = npf.pmt(Decimal('0.08') / Decimal('12'), 5 * 12, 15000)
@@ -247,28 +250,28 @@ class TestPmt:
     def test_pmt_decimal_zero_rate(self):
         # Test the edge case where rate == 0.0
         res = npf.pmt(Decimal('0'), Decimal('60'), Decimal('15000'))
-        tgt = -250
+        tgt = Decimal("-250.0")
         assert_equal(res, tgt)
 
     def test_pmt_decimal_broadcast(self):
         # Test the case where we use broadcast and
         # the arguments passed in are arrays.
-        res = npf.pmt([[Decimal('0'), Decimal('0.8')],
-                       [Decimal('0.3'), Decimal('0.8')]],
+        res = npf.pmt([Decimal('0'), Decimal('0.8')],
                       [Decimal('12'), Decimal('3')],
                       [Decimal('2000'), Decimal('20000')])
-        tgt = numpy.array([[Decimal('-166.6666666666666666666666667'),
-                            Decimal('-19311.25827814569536423841060')],
-                           [Decimal('-626.9081401700757748402586600'),
-                            Decimal('-19311.25827814569536423841060')]])
+        tgt = numpy.array([[[Decimal('-166.6666666666666666666666667'),
+                             Decimal('-1666.666666666666666666666667')],
+                            [Decimal('-666.6666666666666666666666667'),
+                             Decimal('-6666.666666666666666666666667')]],
+                           [[Decimal('-1601.384284962072725530198850'),
+                             Decimal('-16013.84284962072725530198850')],
+                            [Decimal('-1931.125827814569536423841060'),
+                             Decimal('-19311.25827814569536423841060')]]])
 
         # Cannot use the `assert_allclose` because it uses isfinite under
         # the covers which does not support the Decimal type
         # See issue: https://github.com/numpy/numpy/issues/9954
-        assert_equal(res[0][0], tgt[0][0])
-        assert_equal(res[0][1], tgt[0][1])
-        assert_equal(res[1][0], tgt[1][0])
-        assert_equal(res[1][1], tgt[1][1])
+        assert_equal(res.squeeze(), tgt)
 
 
 class TestMirr:

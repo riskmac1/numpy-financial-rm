@@ -244,6 +244,55 @@ def fv(rate, nper, pmt, pv, when='end'):
     return _return_ufunc_like(out)
 
 
+def _pmt_inner_loop_native(rate, nper, pv, fv, when):
+    if rate == 0.0:
+        return -(fv + pv) / nper
+    else:
+        temp = (1.0 + rate) ** nper
+        fact = (1.0 + rate * when) * (temp - 1.0) / rate
+        return -(fv + pv * temp) / fact
+
+
+def _pmt_native(rates, npers, pvs, fvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(npers.shape[0]):
+            for k in range(pvs.shape[0]):
+                for l in range(fvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l, m] = _pmt_inner_loop_native(
+                            rates[i],
+                            npers[j],
+                            pvs[k],
+                            fvs[l],
+                            whens[m],
+                        )
+
+
+def _pmt_inner_loop_decimal(rate, nper, pv, fv, when):
+    one = Decimal("1.0")
+    if rate == Decimal("0.0"):
+        return -(fv + pv) / nper
+    else:
+        temp = (one + rate) ** nper
+        fact = (one + rate * when) * (temp - one) / rate
+        return -(fv + pv * temp) / fact
+
+
+def _pmt_decimal(rates, npers, pvs, fvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(npers.shape[0]):
+            for k in range(pvs.shape[0]):
+                for l in range(fvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l, m] = _pmt_inner_loop_decimal(
+                            rates[i],
+                            npers[j],
+                            pvs[k],
+                            fvs[l],
+                            whens[m],
+                        )
+
+
 def pmt(rate, nper, pv, fv=0, when='end'):
     """Compute the payment against loan principal plus interest.
 
@@ -328,14 +377,25 @@ def pmt(rate, nper, pv, fv=0, when='end'):
     example illustrates usage of `fv` having a default value of 0.
 
     """
+
     when = _convert_when(when)
-    (rate, nper, pv, fv, when) = map(np.array, [rate, nper, pv, fv, when])
-    temp = (1 + rate) ** nper
-    mask = (rate == 0)
-    masked_rate = np.where(mask, 1, rate)
-    fact = np.where(mask != 0, nper,
-                    (1 + masked_rate * when) * (temp - 1) / masked_rate)
-    return -(fv + pv * temp) / fact
+    rates, npers, pvs, fvs, whens = map(np.atleast_1d, (rate, nper, pv, fv, when))
+
+    arrays = rates, npers, pvs, fvs, whens
+    dtype = Decimal if _use_decimal_dtype(*arrays) else np.float64
+    shape = _get_output_array_shape(*arrays)
+
+    if dtype == Decimal:
+        rates, npers, pvs, fvs, whens = map(_to_decimal_array_1d, arrays)
+
+    out = np.empty(shape=shape, dtype=dtype)
+
+    if dtype == Decimal:
+        _pmt_decimal(rates, npers, pvs, fvs, whens, out)
+    else:
+        _pmt_native(rates, npers, pvs, fvs, whens, out)
+
+    return _return_ufunc_like(out)
 
 
 def nper(rate, pmt, pv, fv=0, when='end'):
