@@ -398,10 +398,63 @@ def pmt(rate, nper, pv, fv=0, when='end'):
     return _return_ufunc_like(out)
 
 
+def _nper_inner_loop_native(rate, pmt, pv, fv, when):
+    if rate == 0.0:
+        # Infinite numbers of payments are okay, so ignore the
+        # potential divide by zero.
+        with np.errstate(divide="ignore"):
+            fv_ = -(fv + pv) / pmt
+    else:
+        temp = pmt * (1.0 + rate * when) / rate
+        fv_ = np.log((-fv + temp) / (pv + temp)) / np.log(1.0 + rate)
+    return fv_
+
+
+def _nper_native(rates, pmts, pvs, fvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(pmts.shape[0]):
+            for k in range(pvs.shape[0]):
+                for l in range(fvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l , m] = _nper_inner_loop_native(
+                            rates[i],
+                            pmts[j],
+                            pvs[k],
+                            fvs[l],
+                            whens[m]
+                        )
+
+
+def _nper_inner_loop_decimal(rate, pmt, pv, fv, when):
+    one = Decimal("1.0")
+    if rate == Decimal("0.0"):
+        if pmt == Decimal("0.0"):
+            fv_ = Decimal("inf")
+        else:
+            fv_ = -(fv + pv) / pmt
+    else:
+        temp = pmt * (one + rate * when) / rate
+        fv_ = ((-fv + temp) / (pv + temp)).ln() / (one + rate).ln()
+    return fv_
+
+
+def _nper_decimal(rates, pmts, pvs, fvs, whens, out):
+    for i in range(rates.shape[0]):
+        for j in range(pmts.shape[0]):
+            for k in range(pvs.shape[0]):
+                for l in range(fvs.shape[0]):
+                    for m in range(whens.shape[0]):
+                        out[i, j, k, l , m] = _nper_inner_loop_decimal(
+                            rates[i],
+                            pmts[j],
+                            pvs[k],
+                            fvs[l],
+                            whens[m]
+                        )
+
+
 def nper(rate, pmt, pv, fv=0, when='end'):
     """Compute the number of periodic payments.
-
-    :class:`decimal.Decimal` type is not supported.
 
     Parameters
     ----------
@@ -434,7 +487,7 @@ def nper(rate, pmt, pv, fv=0, when='end'):
     If you only had $150/month to pay towards the loan, how long would it take
     to pay-off a loan of $8,000 at 7% annual interest?
 
-    >>> print(np.round(npf.nper(0.07/12, -150, 8000), 5))
+    >>> np.round(npf.nper(0.07/12, -150, 8000), 5)
     64.07335
 
     So, over 64 months would be required to pay off the loan.
@@ -442,35 +495,54 @@ def nper(rate, pmt, pv, fv=0, when='end'):
     The same analysis could be done with several different interest rates
     and/or payments and/or total amounts to produce an entire table.
 
-    >>> npf.nper(*(np.ogrid[0.07/12: 0.08/12: 0.01/12,
-    ...                     -150   : -99    : 50    ,
-    ...                     8000   : 9001   : 1000]))
-    array([[[ 64.07334877,  74.06368256],
-            [108.07548412, 127.99022654]],
-           [[ 66.12443902,  76.87897353],
-            [114.70165583, 137.90124779]]])
+    >>> rates = [0.07/12, 0.08/12]
+    >>> payments = [-150, -99, 50]
+    >>> amounts = [8_000, 9_001, 1_000]
+    >>> npf.nper(rates, payments, amounts).squeeze().round(2)
+    array([[[  64.07,   74.07,    6.82],
+            [ 109.6 ,  129.94,   10.44],
+            [-113.34, -123.43,  -18.97]],
+
+           [[  66.12,   76.89,    6.84],
+            [ 116.45,  140.22,   10.49],
+            [-109.25, -118.67,  -18.84]]])
+
+    All of the above calculations may also be perfomed with
+    :class: `decimal.Decimal`
+
+    >>> from decimal import Decimal
+    >>> rates_dec = [Decimal(0.07/12), Decimal(0.08/12)]
+    >>> payments_dec = [Decimal(-150), Decimal(-99)]
+    >>> amounts_dec = [Decimal(8_000), Decimal(9_001)]
+    >>> npf.nper(rates_dec, payments_dec, amounts_dec).squeeze()
+    array([[[Decimal('64.07334877066212212189699513'),
+             Decimal('74.07396916328429975036351917')],
+            [Decimal('109.6018056273796416188145428'),
+             Decimal('129.9420433259950608080702921')]],
+
+           [[Decimal('66.12443901510279079525075360'),
+             Decimal('76.89012204681221772905821698')],
+            [Decimal('116.4491291177397335916880236'),
+             Decimal('140.2247224884300393896249366')]]], dtype=object)
 
     """
     when = _convert_when(when)
-    rate, pmt, pv, fv, when = np.broadcast_arrays(rate, pmt, pv, fv, when)
-    nper_array = np.empty_like(rate, dtype=np.float64)
+    rates, pmts, pvs, fvs, whens = map(np.atleast_1d, (rate, pmt, pv, fv, when))
+    arrays = rates, pmts, pvs, fvs, whens
+    dtype = Decimal if _use_decimal_dtype(*arrays) else np.float64
+    shape = _get_output_array_shape(*arrays)
 
-    zero = rate == 0
-    nonzero = ~zero
+    if dtype == Decimal:
+        rates, pmts, pvs, fvs, whens = map(_to_decimal_array_1d, arrays)
 
-    with np.errstate(divide='ignore'):
-        # Infinite numbers of payments are okay, so ignore the
-        # potential divide by zero.
-        nper_array[zero] = -(fv[zero] + pv[zero]) / pmt[zero]
+    out = np.empty(shape=shape, dtype=dtype)
 
-    nonzero_rate = rate[nonzero]
-    z = pmt[nonzero] * (1 + nonzero_rate * when[nonzero]) / nonzero_rate
-    nper_array[nonzero] = (
-            np.log((-fv[nonzero] + z) / (pv[nonzero] + z))
-            / np.log(1 + nonzero_rate)
-    )
+    if dtype == Decimal:
+        _nper_decimal(rates, pmts, pvs, fvs, whens, out)
+    else:
+        _nper_native(rates, pmts, pvs, fvs, whens, out)
 
-    return nper_array
+    return _return_ufunc_like(out)
 
 
 def _value_like(arr, value):

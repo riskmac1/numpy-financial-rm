@@ -340,7 +340,7 @@ class TestMirr:
 class TestNper:
     def test_basic_values(self):
         assert_allclose(
-            npf.nper([0, 0.075], -2000, 0, 100000),
+            npf.nper([0, 0.075], -2000, 0, 100000).squeeze(),
             [50, 21.544944],  # Computed using Google Sheet's NPER
             rtol=1e-5,
         )
@@ -361,8 +361,9 @@ class TestNper:
         assert_(npf.nper(0, -100, 1000) == 10)
 
     def test_broadcast(self):
-        assert_almost_equal(npf.nper(0.075, -2000, 0, 100000., [0, 1]),
-                            [21.5449442, 20.76156441], 4)
+        tgt = [21.5449442, 20.76156441]
+        res = npf.nper(0.075, -2000, 0, 100000., [0, 1]).squeeze()
+        assert_almost_equal(tgt, res, 4)
 
 
 class TestPpmt:
