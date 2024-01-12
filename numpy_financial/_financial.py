@@ -629,7 +629,7 @@ def rate(nper, pmt, pv, fv, when='end', guess=None, tol=None, maxiter=100):
         return rn
 
 
-def irr(values):
+def irr(values,guess=0):
     """
     Return the Internal Rate of Return (IRR).
 
@@ -705,7 +705,9 @@ def irr(values):
     # NPV(rate) = 0 can have more than one solution so we return
     # only the solution closest to zero.
     rate = 1/res - 1
-    rate = rate.item(np.argmin(np.abs(rate)))
+    # rate = rate.item(np.argmin(np.abs(rate)))
+    rate = rate.item(np.argmin(np.abs(rate-guess)))
+
     return rate
 
 
